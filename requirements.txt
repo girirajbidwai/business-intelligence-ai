@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+httpx
+beautifulsoup4
+pydantic
+pydantic-settings
+google-generativeai
+python-dotenv
+slowapi
+pytest
+jinja2
+python-multipart

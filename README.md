@@ -1,124 +1,89 @@
-# Firmable Data Pipeline Project
+# Firmable AI Agent
 
-## Overview
+Firmable AI is a high-performance FastAPI application designed to extract, synthesize, and interpret business insights from website homepages. It leverages Google Gemini AI and advanced web scraping to provide structured information and conversational follow-ups.
 
-This repository implements a modular data pipeline to:
-- Extract data from two different websites.
-- Store multiple CSV files as raw data.
-- Load the data into a PostgreSQL database using Python scripts.
-- Clean and transform the data using dbt.
-- Orchestrate the entire workflow using Apache Airflow.
+## 🚀 Features
+- **Semantic Extraction**: Automatically identifies Industry, Company Size, USP, Target Audience, and Overall Sentiment.
+- **Conversational AI**: A dedicated endpoint for asking follow-up questions with source citation.
+- **Asynchronous Scraping**: Efficiently fetches and cleans website data.
+- **Security**: Bearer token authentication for all API endpoints.
+- **Rate Limiting**: Built-in protection against abuse.
+- **Premium UI**: A sleek, modern dashboard for easy interaction.
 
----
-
-## Architecture
-
-<!--
-Insert your data pipeline architecture diagram here.
-For example, you can add an image like this once you have it:
-![Data Pipeline Architecture](path/to/diagram.png)
--->
-
----
-
-## Repository Structure
-
-```
-airflow/            # Airflow DAGs, plugins, and config files
-  ├── dags/
-  └── plugins/
-data/
-  ├── raw/          # Raw CSV files
-  └── processed/    # (Optional) Processed/intermediate files
-dbt/                # dbt project for data cleaning
-  ├── models/
-  │   ├── staging/
-  │   └── marts/
-  ├── seeds/
-  ├── snapshots/
-  ├── dbt_project.yml
-  └── profiles.yml
-scripts/            # Python scripts for extraction & loading
-  ├── extract_website1.py
-  ├── extract_website2.py
-  ├── load_to_postgres.py
-  └── requirements.txt
-config/             # Configuration and secrets
-  ├── config.yaml
-  └── secrets.env
-tests/              # Unit/integration tests
-  └── test_data_pipeline.py
-.gitignore
-README.md
-LICENSE
+## 🛠️ Architecture
+```mermaid
+graph TD
+    User-->|REST API| FastAPI
+    FastAPI-->|Scraper| Website
+    FastAPI-->|AI Service| Gemini_LLM
+    Gemini_LLM-->|Process| FastAPI
+    FastAPI-->|Response| User
 ```
 
----
+## 🧰 Tech Stack
+- **FastAPI**: Main framework for high-performance API development.
+- **Google Gemini (AI)**: Used for semantic extraction and conversational QA.
+- **HTTPX & BeautifulSoup**: Asynchronous web scraping and cleaning.
+- **Pydantic**: Robust data validation and serialization.
+- **SlowAPI**: Rate limiting for security.
+- **Vanilla CSS & JS**: Modern, responsive UI with glassmorphism.
 
-## Getting Started
+## ⚙️ Setup & Installation
 
-### Prerequisites
+### 1. Prerequisites
+- Python 3.9+
+- A Google AI Studio API Key (for Gemini)
 
-- Python 3.8+
-- PostgreSQL
-- dbt
-- Apache Airflow
+### 2. Installation
+```powershell
+# Clone the repository (if applicable)
+# Navigate to project directory
+cd Firmable
 
-### Setup Instructions
+# Install dependencies
+pip install -r requirements.txt
+```
 
-1. **Clone the repository**
-    ```bash
-    git clone https://github.com/your-username/firmable.git
-    cd firmable
-    ```
+### 3. Environment Configuration
+Create a `.env` file in the root directory:
+```env
+SECRET_KEY=your_custom_secret_token
+GEMINI_API_KEY=your_gemini_api_key_from_google_studio
+```
 
-2. **Install Python dependencies**
-    ```bash
-    pip install -r scripts/requirements.txt
-    ```
+### 4. Running the Application
+```powershell
+uvicorn app.main:app --reload
+```
+Open `http://localhost:8000` in your browser to access the UI.
 
-3. **Configure Airflow**
-    - Place your DAGs in `airflow/dags`
-    - Configure `airflow.cfg` as needed
+## 📡 API Usage Examples
 
-4. **Set up dbt**
-    - Edit `dbt/profiles.yml` and `dbt_project.yml` for your environment
+### Endpoint 1: Analyze Website
+**POST** `/analyze`
+```json
+{
+    "url": "https://stripe.com",
+    "questions": ["What is their main payment product?"]
+}
+```
+**Auth**: `Authorization: Bearer your_custom_secret_token`
 
-5. **Configure connections and secrets**
-    - Add your configuration to `config/config.yaml`
-    - Store sensitive information in `config/secrets.env` (do not commit this file)
+### Endpoint 2: Chat
+**POST** `/chat`
+```json
+{
+    "url": "https://stripe.com",
+    "query": "How do they handle global payments?",
+    "conversation_history": []
+}
+```
 
----
+## 🧪 Testing
+Run tests using pytest:
+```powershell
+pytest
+```
 
-## Usage
-
-1. **Extract Data**
-    - Run scripts in `scripts/` or trigger via Airflow DAG
-
-2. **Load to PostgreSQL**
-    - Use `load_to_postgres.py` or trigger via Airflow
-
-3. **Clean Data with dbt**
-    - From the `dbt/` directory, run:
-      ```bash
-      dbt run
-      ```
-
-4. **Orchestrate with Airflow**
-    - Start the scheduler and webserver:
-      ```bash
-      airflow scheduler
-      airflow webserver
-      ```
-
----
-
-## Contributing
-
-Contributions are welcome! Please open issues or pull requests for any changes.
-
----
-
-## License
-
-[MIT License](LICENSE)
+## 📝 IDE
+Developed using VS Code / Cursor.
