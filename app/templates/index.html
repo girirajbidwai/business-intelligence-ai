@@ -454,7 +454,7 @@
         const chatCard = document.getElementById('chatCard');
         const chatBox = document.getElementById('chatBox');
 
-        let convoHistory = [];
+        let thread_id = "session_" + Math.random().toString(36).substring(7);
 
         analyzeBtn.addEventListener('click', async () => {
             const url = document.getElementById('url').value;
@@ -463,7 +463,9 @@
             toggleUI(true);
             resultsGrid.innerHTML = '';
             chatBox.innerHTML = '';
-            convoHistory = [];
+            // Reset thread_id on new analysis if desired, or keep it.
+            // Let's reset it to start a fresh conversation for each new analysis.
+            thread_id = "session_" + Math.random().toString(36).substring(7);
 
             try {
                 const res = await fetch('/analyze', {
@@ -542,17 +544,21 @@
                     body: JSON.stringify({
                         url: document.getElementById('url').value,
                         query: q,
-                        conversation_history: convoHistory
+                        thread_id: thread_id
                     })
                 });
+
+                if (!res.ok) {
+                    const errorData = await res.json();
+                    throw new Error(errorData.detail || 'Interface connection error');
+                }
 
                 const data = await res.json();
                 chatBox.removeChild(typing);
                 addBubble('agent', data.agent_response, data.context_sources);
-                convoHistory.push({ role: 'user', content: q }, { role: 'assistant', content: data.agent_response });
             } catch (e) {
-                chatBox.removeChild(typing);
-                addBubble('agent', 'Interface connection error. System recalibrating...');
+                if (typing.parentNode) chatBox.removeChild(typing);
+                addBubble('agent', `Error: ${e.message}`);
             }
         }
 

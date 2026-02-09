@@ -38,6 +38,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     url: HttpUrl
     query: str
+    thread_id: Optional[str] = "default_thread"
     conversation_history: Optional[List[ChatMessage]] = None
 
 class ChatResponse(BaseModel):

@@ -87,6 +87,7 @@ async def chat_with_website(
         chat_result = await ai_service.chat_interaction(
             content=content,
             query=payload.query,
+            thread_id=payload.thread_id,
             history=payload.conversation_history
         )
         

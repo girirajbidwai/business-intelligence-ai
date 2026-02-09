@@ -79,11 +79,5 @@ Open `http://localhost:8000` in your browser to access the UI.
 }
 ```
 
-## 🧪 Testing
-Run tests using pytest:
-```powershell
-pytest
-```
-
 ## 📝 IDE
 Developed using VS Code / Cursor.

@@ -10,3 +10,8 @@ slowapi
 pytest
 jinja2
 python-multipart
+langgraph
+langchain-google-genai
+langchain-core
+langgraph-checkpoint-sqlite
+aiosqlite
