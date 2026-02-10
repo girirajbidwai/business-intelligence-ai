@@ -3,12 +3,14 @@ import json
 import sqlite3
 from typing import List, Optional, Dict
 from .models import CompanyInfo, ExtractedAnswer, ChatMessage
+from .vector_store import VectorStoreManager
 
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import START, MessagesState, StateGraph
 import logging
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -18,20 +20,19 @@ class AIService:
             raise ValueError("Groq API Key is missing. Please set GROQ_API_KEY in your .env file.")
         
         # Initialize Groq Model
-        # using configurable model name, defaulting to Llama3-70b-8192
-        model_name = os.getenv("GROQ_MODEL", "llama3-70b-8192")
+        model_name = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
         self.llm = ChatGroq(
             model_name=model_name,
             groq_api_key=api_key,
             temperature=0
         )
         
+        self.vector_store = VectorStoreManager()
+        
         # LangGraph Setup
         workflow = StateGraph(MessagesState)
         
         def call_model(state: MessagesState):
-            # The last message might contains context if we inject it there
-            # or we can rely on the system message being present in the history
             response = self.llm.invoke(state["messages"])
             return {"messages": [response]}
             
@@ -39,25 +40,34 @@ class AIService:
         workflow.add_edge(START, "agent")
         
         # Persistence layer path
-        # In serverless environments like Netlify (AWS Lambda), we use /tmp for writable SQLite
-        # On Render with a Disk, we use /data/checkpoints.sqlite if available, else /tmp or local
         if os.getenv("RENDER"):
              if os.path.exists("/data"):
                  self.db_path = "/data/checkpoints.sqlite"
              else:
-                 self.db_path = "/tmp/checkpoints.sqlite" # Fallback for free tier (ephemeral)
+                 self.db_path = "/tmp/checkpoints.sqlite"
         elif os.getenv("NETLIFY") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
             self.db_path = "/tmp/checkpoints.sqlite"
         else:
             self.db_path = "checkpoints.sqlite"
         self.workflow = workflow
 
-    async def analyze_content(self, content: str, questions: Optional[List[str]] = None) -> dict:
+    async def analyze_content(self, website_data: List[Dict[str, str]], questions: Optional[List[str]] = None) -> dict:
         """Analysis logic using Groq (Llama 3) with strict JSON prompting."""
+        # For general analysis, we mostly use the homepage content but can include snippets from others
+        # To keep it simple for the initial summary, we use the first page (usually homepage)
+        main_content = website_data[0]["content"] if website_data else ""
+        
+        # Index everything into Pinecone for RAG
+        if website_data:
+            try:
+                await self.vector_store.index_website_content(website_data)
+            except Exception as e:
+                logger.error(f"Failed to index content: {e}")
+
         prompt_text = f"""Analyze the following website content and extract key business insights.
 
-Website Content:
-{content[:15000]}
+Website Content (Homepage):
+{main_content[:15000]}
 
 Return ONLY a raw JSON object — no markdown fences, no explanation, no text before or after the JSON.
 Use this exact structure:
@@ -94,32 +104,38 @@ Additional Questions to answer:
             text = response.content.replace("```json", "").replace("```", "").strip()
             return json.loads(text)
         except Exception as e:
-            # Fallback for partial JSON or errors
              logger.error(f"Failed to parse AI response: {str(e)} | Raw: {text[:200]}...")
              raise ValueError(f"Failed to parse AI response: {str(e)} | Raw: {text[:100]}...")
 
-    async def chat_interaction(self, content: str, query: str, thread_id: str, history: Optional[List[ChatMessage]] = None) -> dict:
-        """Chat logic using LangGraph with SQLite persistence and optimized prompts."""
+    async def chat_interaction(self, url: str, query: str, thread_id: str, history: Optional[List[ChatMessage]] = None) -> dict:
+        """Chat logic using LangGraph with Pinecone RAG and SQLite persistence."""
         logger.info(f"Processing chat query using thread_id: {thread_id}")
         config = {"configurable": {"thread_id": thread_id}}
         
-        # Truncate website content to keep the context window focused
-        trimmed_content = content[:6000] if len(content) > 6000 else content
+        # Retrieve context from Pinecone dedicated DB
+        context = self.vector_store.query_context(url, query)
         
-        # Highly optimized system prompt to reduce garbage output
+        if not context:
+            # Fallback if Pinecone is not available or has no data
+            context = "No specific website content found for this query."
+            context_sources = []
+        else:
+            # Extract source URLs for display
+            context_sources = list(set([line.split("Source [")[1].split("]")[0] for line in context.splitlines() if "Source [" in line]))
+
+        # Highly optimized system prompt for strict grounding
         system_prompt = (
-            "You are a concise business intelligence assistant. "
-            "Your ONLY job is to answer questions about the website content provided below.\n\n"
-            "RULES:\n"
-            "1. Be concise — answer in 2-4 sentences unless the user asks for detail.\n"
-            "2. Stay grounded — ONLY use information from the website content below. "
-            "If the answer is not in the content, say \"This information is not available on the website.\"\n"
-            "3. No filler — do not repeat the question, do not add unnecessary preambles like "
-            "\"Sure!\", \"Great question!\", or \"Based on the website content...\".\n"
-            "4. Use bullet points for lists of 3+ items.\n"
-            "5. Do not hallucinate or speculate beyond what the content states.\n"
-            "6. If asked to compare or analyze, base it strictly on the provided content.\n\n"
-            f"--- WEBSITE CONTENT ---\n{trimmed_content}\n--- END CONTENT ---"
+            "You are a strict business intelligence assistant. "
+            "Your ONLY source of information is the PROVIDED CONTEXT below. "
+            "You are FORBIDDEN from using any pre-trained knowledge about this company or any other external information.\n\n"
+            "STRICT RULES:\n"
+            "1. Grounding: ONLY answer using the provided context. If the answer is not explicitly stated in the context, "
+            "say: \"I am sorry, but the provided website content does not contain information to answer this question.\"\n"
+            "2. Conciseness: Answer in 2-4 sentences max unless detail is specifically requested.\n"
+            "3. Preamble: DO NOT start with \"Based on the context...\" or \"Sure!\". Start directly with the answer.\n"
+            "4. Sources: If multiple sources provide information, synthesize them.\n"
+            "5. Navigation: Mention relevant URLs from the context if they directly support your answer.\n\n"
+            f"--- PROVIDED CONTEXT From Website ---\n{context}\n--- END CONTEXT ---"
         )
         
         # Use async context manager for the saver
@@ -132,16 +148,23 @@ Additional Questions to answer:
             messages = []
             
             # If no history exists in DB for this thread, initialize with system context
-            if not state or not state.values.get("messages"):
-                messages.append(SystemMessage(content=system_prompt))
-                
-                # If historical messages were passed in the request (legacy support), add them
-                if history:
-                    for msg in history:
-                        if msg.role == "user":
-                            messages.append(HumanMessage(content=msg.content))
-                        else:
-                            messages.append(AIMessage(content=msg.content))
+            # NOTE: We update the system prompt EACH time with the new retrieved context for the current query
+            # However, in LangGraph, we might want to keep the system prompt stable or update it.
+            # To ensure the LATEST context is used, we inject it as a system message.
+            
+            messages.append(SystemMessage(content=system_prompt))
+            
+            if state and state.values.get("messages"):
+                # Append existing history (excluding previous system messages)
+                for msg in state.values["messages"]:
+                    if not isinstance(msg, SystemMessage):
+                        messages.append(msg)
+            elif history:
+                for msg in history:
+                    if msg.role == "user":
+                        messages.append(HumanMessage(content=msg.content))
+                    else:
+                        messages.append(AIMessage(content=msg.content))
             
             # Add the current user query
             messages.append(HumanMessage(content=query))
@@ -154,6 +177,7 @@ Additional Questions to answer:
         
         return {
             "agent_response": last_msg.content,
-            "context_sources": ["Website content analysis stored in thread memory"]
+            "context_sources": context_sources if context_sources else ["Website Content"]
         }
+
 
