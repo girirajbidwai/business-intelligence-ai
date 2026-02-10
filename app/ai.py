@@ -40,7 +40,13 @@ class AIService:
         
         # Persistence layer path
         # In serverless environments like Netlify (AWS Lambda), we use /tmp for writable SQLite
-        if os.getenv("NETLIFY") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+        # On Render with a Disk, we use /data/checkpoints.sqlite if available, else /tmp or local
+        if os.getenv("RENDER"):
+             if os.path.exists("/data"):
+                 self.db_path = "/data/checkpoints.sqlite"
+             else:
+                 self.db_path = "/tmp/checkpoints.sqlite" # Fallback for free tier (ephemeral)
+        elif os.getenv("NETLIFY") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
             self.db_path = "/tmp/checkpoints.sqlite"
         else:
             self.db_path = "checkpoints.sqlite"
