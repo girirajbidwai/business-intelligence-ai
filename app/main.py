@@ -104,5 +104,3 @@ async def chat_with_website(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Netlify Function Handler
-handler = Mangum(app)

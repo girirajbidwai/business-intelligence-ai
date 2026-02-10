@@ -1,13 +1,12 @@
 [build]
   command = "pip install -r requirements.txt"
-  functions = "app"
+  functions = "functions"
 
 [[redirects]]
   from = "/*"
-  to = "/.netlify/functions/main"
+  to = "/.netlify/functions/api"
   status = 200
 
 [functions]
   node_bundler = "esbuild"
-  # This section helps specify python runtime if needed, 
-  # though Netlify usually detects it from requirements.txt or runtime environment.
+  external_node_modules = []
