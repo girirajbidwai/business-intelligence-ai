@@ -31,12 +31,12 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Security
 security = HTTPBearer()
 API_SECRET_KEY = os.getenv("SECRET_KEY", "default_secret")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-if not GEMINI_API_KEY:
-    print("WARNING: GEMINI_API_KEY not found in environment variables.")
+if not GROQ_API_KEY:
+    print("WARNING: GROQ_API_KEY not found in environment variables.")
 
-ai_service = AIService(api_key=GEMINI_API_KEY)
+ai_service = AIService(api_key=GROQ_API_KEY)
 print("Firmable AI Agent: AI Service initialized.")
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):

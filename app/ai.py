@@ -4,7 +4,7 @@ import sqlite3
 from typing import List, Optional, Dict
 from .models import CompanyInfo, ExtractedAnswer, ChatMessage
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import START, MessagesState, StateGraph
@@ -12,17 +12,13 @@ from langgraph.graph import START, MessagesState, StateGraph
 class AIService:
     def __init__(self, api_key: str):
         if not api_key:
-            raise ValueError("Gemini API Key is missing. Please set GEMINI_API_KEY in your .env file.")
+            raise ValueError("Groq API Key is missing. Please set GROQ_API_KEY in your .env file.")
         
-        # Standard Gemini SDK for static analysis (matches original implementation)
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        self.static_model = genai.GenerativeModel('gemini-2.5-flash', generation_config={"response_mime_type": "application/json"})
-        
-        # LangChain Gemini for Chat and LangGraph
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            google_api_key=api_key,
+        # Initialize Groq Model
+        # Using Llama3-70b-8192 for high quality and speed
+        self.llm = ChatGroq(
+            model_name="llama3-70b-8192",
+            groq_api_key=api_key,
             temperature=0
         )
         
@@ -53,14 +49,14 @@ class AIService:
         self.workflow = workflow
 
     async def analyze_content(self, content: str, questions: Optional[List[str]] = None) -> dict:
-        """Original analysis logic using standard Gemini SDK for JSON mode support."""
-        prompt = f"""
+        """Analysis logic using Groq (Llama 3) with strict JSON prompting."""
+        prompt_text = f"""
         Analyze the following website content and extract key business insights.
         
         Website Content:
-        {content}
+        {content[:15000]}  # Truncate to avoid context limits if necessary, though Groq handles large contexts well.
         
-        Return a JSON object with this exact structure:
+        Return a valid JSON object with this exact structure (do not include markdown formatting like ```json):
         {{
             "company_info": {{
                 "industry": "Primary industry",
@@ -85,16 +81,18 @@ class AIService:
         {questions if questions else "None"}
         """
         
-        # Note: genai.GenerativeModel is synchronous in this usage
-        response = self.static_model.generate_content(prompt)
+        # Use simple invoke
+        response = self.llm.invoke([
+            SystemMessage(content="You are a business intelligence AI that outputs exclusively in valid JSON."),
+            HumanMessage(content=prompt_text)
+        ])
+        
         try:
-            return json.loads(response.text)
+            text = response.content.replace("```json", "").replace("```", "").strip()
+            return json.loads(text)
         except Exception as e:
-            text = response.text.replace("```json", "").replace("```", "").strip()
-            try:
-                return json.loads(text)
-            except:
-                raise ValueError(f"Failed to parse AI response: {str(e)}")
+            # Fallback for partial JSON or errors
+             raise ValueError(f"Failed to parse AI response: {str(e)} | Raw: {text[:100]}...")
 
     async def chat_interaction(self, content: str, query: str, thread_id: str, history: Optional[List[ChatMessage]] = None) -> dict:
         """New chat logic using LangGraph with SQLite persistence."""
