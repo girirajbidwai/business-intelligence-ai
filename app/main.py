@@ -12,11 +12,10 @@ from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
 import logging
 
+from .logging_config import setup_logging
+
 # Configure Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
