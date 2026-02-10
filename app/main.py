@@ -10,6 +10,14 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
+import logging
+
+# Configure Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 
 from .models import (
@@ -34,10 +42,10 @@ API_SECRET_KEY = os.getenv("SECRET_KEY", "default_secret")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 if not GROQ_API_KEY:
-    print("WARNING: GROQ_API_KEY not found in environment variables.")
+    logger.warning("GROQ_API_KEY not found in environment variables.")
 
 ai_service = AIService(api_key=GROQ_API_KEY)
-print("Firmable AI Agent: AI Service initialized.")
+logger.info("Firmable AI Agent: AI Service initialized.")
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):
     if credentials.credentials != API_SECRET_KEY:
@@ -60,6 +68,7 @@ async def analyze_website(
     token: str = Depends(verify_token)
 ):
     try:
+        logger.info(f"Received analysis request for: {payload.url}")
         # Re-initialize or check key if needed, or just let it fail and catch it
         content = await scrape_homepage(str(payload.url))
         analysis = await ai_service.analyze_content(content, payload.questions)
@@ -73,8 +82,10 @@ async def analyze_website(
         )
         return response
     except ValueError as ve:
+        logger.error(f"Analysis validation error: {str(ve)}")
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
+        logger.exception(f"Analysis unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/chat", response_model=ChatResponse)
@@ -85,6 +96,7 @@ async def chat_with_website(
     token: str = Depends(verify_token)
 ):
     try:
+        logger.info(f"Chat request for: {payload.url} | Thread: {payload.thread_id}")
         content = await scrape_homepage(str(payload.url))
         chat_result = await ai_service.chat_interaction(
             content=content,
@@ -100,7 +112,9 @@ async def chat_with_website(
             context_sources=chat_result.get("context_sources", ["Homepage content analysis"])
         )
     except ValueError as ve:
+        logger.error(f"Chat validation error: {str(ve)}")
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
+        logger.exception(f"Chat unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 

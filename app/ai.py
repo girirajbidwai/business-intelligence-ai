@@ -8,6 +8,9 @@ from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import START, MessagesState, StateGraph
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AIService:
     def __init__(self, api_key: str):
@@ -82,6 +85,7 @@ class AIService:
         """
         
         # Use simple invoke
+        logger.info("Invoking LLM for website content analysis.")
         response = self.llm.invoke([
             SystemMessage(content="You are a business intelligence AI that outputs exclusively in valid JSON."),
             HumanMessage(content=prompt_text)
@@ -92,11 +96,12 @@ class AIService:
             return json.loads(text)
         except Exception as e:
             # Fallback for partial JSON or errors
+             logger.error(f"Failed to parse AI response: {str(e)} | Raw: {text[:200]}...")
              raise ValueError(f"Failed to parse AI response: {str(e)} | Raw: {text[:100]}...")
 
     async def chat_interaction(self, content: str, query: str, thread_id: str, history: Optional[List[ChatMessage]] = None) -> dict:
         """New chat logic using LangGraph with SQLite persistence."""
-        
+        logger.info(f"Processing chat query using thread_id: {thread_id}")
         config = {"configurable": {"thread_id": thread_id}}
         
         # Use async context manager for the saver
