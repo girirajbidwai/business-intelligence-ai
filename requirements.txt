@@ -12,7 +12,5 @@ python-multipart
 langgraph
 langchain-groq
 langchain-core
-langgraph-checkpoint-sqlite
 aiosqlite
-mangum
 gunicorn
