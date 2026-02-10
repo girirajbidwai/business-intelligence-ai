@@ -4,25 +4,25 @@ import sqlite3
 from typing import List, Optional, Dict
 from .models import CompanyInfo, ExtractedAnswer, ChatMessage
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import START, MessagesState, StateGraph
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AIService:
     def __init__(self, api_key: str):
         if not api_key:
-            raise ValueError("Gemini API Key is missing. Please set GEMINI_API_KEY in your .env file.")
+            raise ValueError("Groq API Key is missing. Please set GROQ_API_KEY in your .env file.")
         
-        # Standard Gemini SDK for static analysis (matches original implementation)
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        self.static_model = genai.GenerativeModel('gemini-2.5-flash', generation_config={"response_mime_type": "application/json"})
-        
-        # LangChain Gemini for Chat and LangGraph
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            google_api_key=api_key,
+        # Initialize Groq Model
+        # using configurable model name, defaulting to Llama3-70b-8192
+        model_name = os.getenv("GROQ_MODEL", "llama3-70b-8192")
+        self.llm = ChatGroq(
+            model_name=model_name,
+            groq_api_key=api_key,
             temperature=0
         )
         
@@ -40,21 +40,27 @@ class AIService:
         
         # Persistence layer path
         # In serverless environments like Netlify (AWS Lambda), we use /tmp for writable SQLite
-        if os.getenv("NETLIFY") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+        # On Render with a Disk, we use /data/checkpoints.sqlite if available, else /tmp or local
+        if os.getenv("RENDER"):
+             if os.path.exists("/data"):
+                 self.db_path = "/data/checkpoints.sqlite"
+             else:
+                 self.db_path = "/tmp/checkpoints.sqlite" # Fallback for free tier (ephemeral)
+        elif os.getenv("NETLIFY") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
             self.db_path = "/tmp/checkpoints.sqlite"
         else:
             self.db_path = "checkpoints.sqlite"
         self.workflow = workflow
 
     async def analyze_content(self, content: str, questions: Optional[List[str]] = None) -> dict:
-        """Original analysis logic using standard Gemini SDK for JSON mode support."""
-        prompt = f"""
+        """Analysis logic using Groq (Llama 3) with strict JSON prompting."""
+        prompt_text = f"""
         Analyze the following website content and extract key business insights.
         
         Website Content:
-        {content}
+        {content[:15000]}  # Truncate to avoid context limits if necessary, though Groq handles large contexts well.
         
-        Return a JSON object with this exact structure:
+        Return a valid JSON object with this exact structure (do not include markdown formatting like ```json):
         {{
             "company_info": {{
                 "industry": "Primary industry",
@@ -65,9 +71,9 @@ class AIService:
                 "target_audience": "Primary customer demographic",
                 "overall_sentiment": "Positive/Neutral/Professional etc.",
                 "contact_info": {{
-                    "email": "email if found",
-                    "phone": "phone if found",
-                    "social_media": {{"linkedin": "url", "twitter": "url", "etc": "url"}}
+                    "email": "email or null",
+                    "phone": "phone or null",
+                    "social_media": {{"linkedin": "url or null", "twitter": "url or null", "facebook": "url or null", "instagram": "url or null"}}
                 }}
             }},
             "extracted_answers": [
@@ -79,20 +85,24 @@ class AIService:
         {questions if questions else "None"}
         """
         
-        # Note: genai.GenerativeModel is synchronous in this usage
-        response = self.static_model.generate_content(prompt)
+        # Use simple invoke
+        logger.info("Invoking LLM for website content analysis.")
+        response = self.llm.invoke([
+            SystemMessage(content="You are a business intelligence AI that outputs exclusively in valid JSON."),
+            HumanMessage(content=prompt_text)
+        ])
+        
         try:
-            return json.loads(response.text)
+            text = response.content.replace("```json", "").replace("```", "").strip()
+            return json.loads(text)
         except Exception as e:
-            text = response.text.replace("```json", "").replace("```", "").strip()
-            try:
-                return json.loads(text)
-            except:
-                raise ValueError(f"Failed to parse AI response: {str(e)}")
+            # Fallback for partial JSON or errors
+             logger.error(f"Failed to parse AI response: {str(e)} | Raw: {text[:200]}...")
+             raise ValueError(f"Failed to parse AI response: {str(e)} | Raw: {text[:100]}...")
 
     async def chat_interaction(self, content: str, query: str, thread_id: str, history: Optional[List[ChatMessage]] = None) -> dict:
         """New chat logic using LangGraph with SQLite persistence."""
-        
+        logger.info(f"Processing chat query using thread_id: {thread_id}")
         config = {"configurable": {"thread_id": thread_id}}
         
         # Use async context manager for the saver

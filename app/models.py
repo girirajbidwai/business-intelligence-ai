@@ -5,16 +5,16 @@ from datetime import datetime
 class ContactInfo(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
-    social_media: Dict[str, str] = Field(default_factory=dict)
+    social_media: Dict[str, Optional[str]] = Field(default_factory=dict)
 
 class CompanyInfo(BaseModel):
-    industry: str
-    company_size: str
-    location: str
-    core_products_services: List[str]
-    unique_selling_proposition: str
-    target_audience: str
-    contact_info: ContactInfo
+    industry: Optional[str] = "Information not found"
+    company_size: Optional[str] = "Information not found"
+    location: Optional[str] = "Information not found"
+    core_products_services: List[str] = Field(default_factory=list)
+    unique_selling_proposition: Optional[str] = "Information not found"
+    target_audience: Optional[str] = "Information not found"
+    contact_info: ContactInfo = Field(default_factory=ContactInfo)
     overall_sentiment: Optional[str] = None
 
 class ExtractedAnswer(BaseModel):
