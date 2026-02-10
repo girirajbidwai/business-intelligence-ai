@@ -18,9 +18,10 @@ class AIService:
             raise ValueError("Groq API Key is missing. Please set GROQ_API_KEY in your .env file.")
         
         # Initialize Groq Model
-        # Using Llama3-70b-8192 for high quality and speed
+        # using configurable model name, defaulting to Llama3-70b-8192
+        model_name = os.getenv("GROQ_MODEL", "llama3-70b-8192")
         self.llm = ChatGroq(
-            model_name="llama3-70b-8192",
+            model_name=model_name,
             groq_api_key=api_key,
             temperature=0
         )
