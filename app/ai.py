@@ -54,41 +54,39 @@ class AIService:
 
     async def analyze_content(self, content: str, questions: Optional[List[str]] = None) -> dict:
         """Analysis logic using Groq (Llama 3) with strict JSON prompting."""
-        prompt_text = f"""
-        Analyze the following website content and extract key business insights.
-        
-        Website Content:
-        {content[:15000]}  # Truncate to avoid context limits if necessary, though Groq handles large contexts well.
-        
-        Return a valid JSON object with this exact structure (do not include markdown formatting like ```json):
-        {{
-            "company_info": {{
-                "industry": "Primary industry",
-                "company_size": "Estimated size (small/medium/large or count)",
-                "location": "Headquarters location",
-                "core_products_services": ["list", "of", "products"],
-                "unique_selling_proposition": "What makes them stand out",
-                "target_audience": "Primary customer demographic",
-                "overall_sentiment": "Positive/Neutral/Professional etc.",
-                "contact_info": {{
-                    "email": "email or null",
-                    "phone": "phone or null",
-                    "social_media": {{"linkedin": "url or null", "twitter": "url or null", "facebook": "url or null", "instagram": "url or null"}}
-                }}
-            }},
-            "extracted_answers": [
-                {{"question": "question string", "answer": "answer string"}}
-            ]
+        prompt_text = f"""Analyze the following website content and extract key business insights.
+
+Website Content:
+{content[:15000]}
+
+Return ONLY a raw JSON object — no markdown fences, no explanation, no text before or after the JSON.
+Use this exact structure:
+{{
+    "company_info": {{
+        "industry": "Primary industry",
+        "company_size": "Estimated size (small/medium/large or employee count)",
+        "location": "Headquarters location or 'Unknown'",
+        "core_products_services": ["product1", "product2"],
+        "unique_selling_proposition": "What makes them stand out",
+        "target_audience": "Primary customer demographic",
+        "overall_sentiment": "Positive/Neutral/Professional",
+        "contact_info": {{
+            "email": "email or null",
+            "phone": "phone or null",
+            "social_media": {{"linkedin": "url or null", "twitter": "url or null", "facebook": "url or null", "instagram": "url or null"}}
         }}
+    }},
+    "extracted_answers": [
+        {{"question": "question text", "answer": "concise answer"}}
+    ]
+}}
+
+Additional Questions to answer:
+{json.dumps(questions) if questions else "None"}"""
         
-        Additional Questions to answer if they aren't covered:
-        {questions if questions else "None"}
-        """
-        
-        # Use simple invoke
         logger.info("Invoking LLM for website content analysis.")
         response = self.llm.invoke([
-            SystemMessage(content="You are a business intelligence AI that outputs exclusively in valid JSON."),
+            SystemMessage(content="You are a business intelligence AI. Output ONLY valid JSON. No markdown, no explanation, no preamble."),
             HumanMessage(content=prompt_text)
         ])
         
@@ -101,9 +99,28 @@ class AIService:
              raise ValueError(f"Failed to parse AI response: {str(e)} | Raw: {text[:100]}...")
 
     async def chat_interaction(self, content: str, query: str, thread_id: str, history: Optional[List[ChatMessage]] = None) -> dict:
-        """New chat logic using LangGraph with SQLite persistence."""
+        """Chat logic using LangGraph with SQLite persistence and optimized prompts."""
         logger.info(f"Processing chat query using thread_id: {thread_id}")
         config = {"configurable": {"thread_id": thread_id}}
+        
+        # Truncate website content to keep the context window focused
+        trimmed_content = content[:6000] if len(content) > 6000 else content
+        
+        # Highly optimized system prompt to reduce garbage output
+        system_prompt = (
+            "You are a concise business intelligence assistant. "
+            "Your ONLY job is to answer questions about the website content provided below.\n\n"
+            "RULES:\n"
+            "1. Be concise — answer in 2-4 sentences unless the user asks for detail.\n"
+            "2. Stay grounded — ONLY use information from the website content below. "
+            "If the answer is not in the content, say \"This information is not available on the website.\"\n"
+            "3. No filler — do not repeat the question, do not add unnecessary preambles like "
+            "\"Sure!\", \"Great question!\", or \"Based on the website content...\".\n"
+            "4. Use bullet points for lists of 3+ items.\n"
+            "5. Do not hallucinate or speculate beyond what the content states.\n"
+            "6. If asked to compare or analyze, base it strictly on the provided content.\n\n"
+            f"--- WEBSITE CONTENT ---\n{trimmed_content}\n--- END CONTENT ---"
+        )
         
         # Use async context manager for the saver
         async with AsyncSqliteSaver.from_conn_string(self.db_path) as saver:
@@ -116,8 +133,7 @@ class AIService:
             
             # If no history exists in DB for this thread, initialize with system context
             if not state or not state.values.get("messages"):
-                system_msg = SystemMessage(content=f"You are an AI assistant helping a user understand a website's content.\n\nWebsite Context:\n{content}")
-                messages.append(system_msg)
+                messages.append(SystemMessage(content=system_prompt))
                 
                 # If historical messages were passed in the request (legacy support), add them
                 if history:
@@ -136,7 +152,6 @@ class AIService:
         # Extract the last message which is the agent's response
         last_msg = result["messages"][-1]
         
-        # Prepare response format to match original
         return {
             "agent_response": last_msg.content,
             "context_sources": ["Website content analysis stored in thread memory"]
