@@ -15,22 +15,22 @@ graph TD
     classDef client fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
 
     %% Nodes
-    Client([💻 Client / Frontend])
+    Client(["💻 Client / Frontend"])
     
     subgraph "Application Server (FastAPI)"
-        API[API Router]
-        Scraper[🕷 Web Search & Scraper]
-        AISvc[🧠 AI Service Layer]
-        VecMgr[tj Vector Store Manager]
+        API["API Router"]
+        Scraper["🕷 Web Search & Scraper"]
+        AISvc["🧠 AI Service Layer"]
+        VecMgr["Vector Store Manager"]
     end
 
     subgraph "External Cloud Services"
-        Groq[⚡ Groq Inference API<br/>(Llama 3 / Mixtral)]
-        Pinecone[TreeMap Pinecone Serverless<br/>(Vector DB + Embedding)]
+        Groq["⚡ Groq Inference API<br/>(Llama 3 / Mixtral)"]
+        Pinecone["Pinecone Serverless<br/>(Vector DB + Embedding)"]
     end
 
     subgraph "Persistence"
-        SQLite[(💾 SQLite DB<br/>LangGraph Checkpoints)]
+        SQLite[("💾 SQLite DB<br/>LangGraph Checkpoints")]
     end
 
     %% Apply Styles
@@ -98,7 +98,7 @@ Manages the state and flow of conversations.
 
 ---
 
-## 🔄 detailed Control Flow
+## 🔄 Detailed Control Flow
 
 ### A. The Analysis Pipeline (`/analyze`)
 This pipeline converts a raw URL into structured business intelligence.
