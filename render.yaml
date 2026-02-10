@@ -2,7 +2,7 @@ services:
   - type: web
     name: firmable-backend
     env: python
-    region: singapore
+    region: frankfurt
     plan: free
     branch: render-deploy
     buildCommand: "pip install -r requirements.txt"
