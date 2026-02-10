@@ -10,6 +10,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
+from mangum import Mangum
 
 from .models import (
     AnalysisRequest, AnalysisResponse, 
@@ -44,7 +45,8 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Security(security))
     return credentials.credentials
 
 # Templates for UI
-templates = Jinja2Templates(directory="app/templates")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -101,3 +103,6 @@ async def chat_with_website(
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# Netlify Function Handler
+handler = Mangum(app)

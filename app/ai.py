@@ -39,7 +39,11 @@ class AIService:
         workflow.add_edge(START, "agent")
         
         # Persistence layer path
-        self.db_path = "checkpoints.sqlite"
+        # In serverless environments like Netlify (AWS Lambda), we use /tmp for writable SQLite
+        if os.getenv("NETLIFY") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+            self.db_path = "/tmp/checkpoints.sqlite"
+        else:
+            self.db_path = "checkpoints.sqlite"
         self.workflow = workflow
 
     async def analyze_content(self, content: str, questions: Optional[List[str]] = None) -> dict:
