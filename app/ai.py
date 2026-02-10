@@ -71,9 +71,9 @@ class AIService:
                 "target_audience": "Primary customer demographic",
                 "overall_sentiment": "Positive/Neutral/Professional etc.",
                 "contact_info": {{
-                    "email": "email if found",
-                    "phone": "phone if found",
-                    "social_media": {{"linkedin": "url", "twitter": "url", "etc": "url"}}
+                    "email": "email or null",
+                    "phone": "phone or null",
+                    "social_media": {{"linkedin": "url or null", "twitter": "url or null", "facebook": "url or null", "instagram": "url or null"}}
                 }}
             }},
             "extracted_answers": [
