@@ -1,107 +1,130 @@
 # System Architecture
 
-This document provides a detailed overview of the Firmable AI Agent's architecture, illustrating how the components interact to provide autonomous website analysis and context-aware chat.
+This document details the architecture of the **Firmable AI Agent**, a high-performance business intelligence system designed for autonomous website analysis and context-aware conversational AI.
 
-## High-Level Architecture Diagram
+## 🏗 High-Level Architecture
+
+The system follows a microservices-inspired monolithic design, leveraging serverless cloud infrastructure for heavy lifting (Inference & Vectors) to maintain a lightweight application footprint.
 
 ```mermaid
 graph TD
+    %% Styling
+    classDef app fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef db fill:#fff3e0,stroke:#ff6f00,stroke-width:2px;
+    classDef cloud fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+    classDef client fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+
     %% Nodes
-    Client([Client / Frontend])
+    Client([💻 Client / Frontend])
     
     subgraph "Application Server (FastAPI)"
-        API[API Endpoints]
-        Scraper[Web Scraper Module]
-        AISvc[AI Service Layer]
-        VecMgr[Vector Store Manager]
+        API[API Router]
+        Scraper[🕷 Web Search & Scraper]
+        AISvc[🧠 AI Service Layer]
+        VecMgr[tj Vector Store Manager]
     end
 
     subgraph "External Cloud Services"
-        Groq[Groq API<br/>(Llama 3 / Mixtral)]
-        Pinecone[Pinecone Serverless<br/>(Vector DB + Inference)]
+        Groq[⚡ Groq Inference API<br/>(Llama 3 / Mixtral)]
+        Pinecone[TreeMap Pinecone Serverless<br/>(Vector DB + Embedding)]
     end
 
     subgraph "Persistence"
-        SQLite[(SQLite DB<br/>Chat History)]
+        SQLite[(💾 SQLite DB<br/>LangGraph Checkpoints)]
     end
 
-    %% Flows
+    %% Apply Styles
+    class API,Scraper,AISvc,VecMgr app;
+    class SQLite db;
+    class Groq,Pinecone cloud;
+    class Client client;
+
+    %% Interactive Flows
     Client -->|POST /analyze| API
     Client -->|POST /chat| API
 
-    %% Analysis Flow
-    API -->|1. Trigger Scrape| Scraper
-    Scraper -->|2. Raw Content| AISvc
-    AISvc -->|3. Upsert Chunks| VecMgr
-    VecMgr -->|4. Index Records| Pinecone
-    AISvc -->|5. Analyze Content| Groq
-    Groq -- JSON --> API
+    %% Analysis Flow (Blue)
+    API -.->|1. Trigger| Scraper
+    Scraper -.->|2. Content| AISvc
+    AISvc -.->|3. Chunk| VecMgr
+    VecMgr -.->|4. Upsert| Pinecone
+    AISvc -.->|5. Extract JSON| Groq
+    Groq -.->|6. Result| API
 
-    %% Chat Flow
-    API -->|1. Query| AISvc
-    AISvc -->|2. Check State| SQLite
-    AISvc -->|3. Retrieval Query| VecMgr
-    VecMgr -->|4. Semantic Search| Pinecone
-    Pinecone -- Context --> AISvc
-    AISvc -->|5. Generate Answer| Groq
-    Groq -- Response --> API
-    AISvc -->|6. Save State| SQLite
+    %% Chat Flow (Red)
+    API ==>|1. Query| AISvc
+    AISvc ==>|2. Get State| SQLite
+    AISvc ==>|3. Search| VecMgr
+    VecMgr ==>|4. Retrieve| Pinecone
+    Pinecone ==>|5. Context| AISvc
+    AISvc ==>|6. Generate| Groq
+    Groq ==>|7. Response| API
+    AISvc ==>|8. Update State| SQLite
 ```
 
-## Component Overview
+## 🧩 Component Breakdown
 
 ### 1. Application Layer (FastAPI)
-The core entry point for the system.
--   **Security**: Implements Bearer Token authentication.
--   **Rate Limiting**: Uses `SlowAPI` to prevent abuse (e.g., 5 requests/minute for analysis).
--   **Request Validation**: Utilizes `Pydantic` models to ensure strict data schemas for inputs and outputs.
--   **Async Architecture**: Fully asynchronous route handlers to handle non-blocking I/O for scraping and API calls.
+The central orchestrator of the system.
+-   **Endpoints**: RESTful API endpoints for `/analyze` and `/chat`.
+-   **Security**: Bearer Token authentication via `HTTPBearer`.
+-   **Performance**: Asynchronous (`async/await`) request handling to support high-concurrency scraping and inference.
+-   **Rate Limiting**: `SlowAPI` integration to protect resources (e.g., 5 requests/min per IP).
 
 ### 2. Deep Web Scraper
--   **Logic**: Located in `app/scraper.py`.
--   **Capabilities**: Performs a Breadth-First Search (BFS) crawl with a depth of 3.
--   **Filtering**: Intelligently ignores non-content pages (login, signup, policies) to focus on business value.
--   **Output**: Returns a structured list of pages with clean text content.
+A specialized module for extracting high-quality text from the web.
+-   **Strategy**: Breadth-First Search (BFS) crawling with configurable depth (default: 3).
+-   **Heuristics**: Automatically filters noise (ads, navbars, footers) to extract only relevant "Business Content".
+-   **Output**: Clean, markdown-friendly text blocks ready for vectorization.
 
-### 3. Dynamic Vector Store (Pinecone)
-Managed by `app/vector_store.py`.
--   **Dynamic Indexing**: Creates a *separate, isolated index* for each unique website domain.
-    -   *Example*: `https://tesla.com` -> Index `idx-tesla-a1b2c3d4`
--   **Serverless Inference**: 
-    -   We do **not** generate embeddings locally (e.g., using OpenAI or HuggingFace libraries).
-    -   Instead, we use Pinecone's `llama-text-embed-v2` model running on their serverless infrastructure.
-    -   We simply send text chunks, and Pinecone handles the vectorization and storage.
--   **Querying**: Uses RAG (Retrieval-Augmented Generation) to find the top-k most relevant text chunks for a user query.
+### 3. Dynamic Vector Store (Pinecone Serverless)
+A novel approach to multi-tenant RAG.
+-   **Dynamic Indexing**: Instead of one massive index, we create **ephemeral, dedicated indexes** for each analyzed URL.
+    -   *Benefit*: Perfect isolation, zero data leakage between different website analyses.
+-   **Serverless Embeddings**: We utilize Pinecone's **Inference API** (`llama-text-embed-v2`).
+    -   *Process*: valid text is sent -> Pinecone embeds it -> Pinecone stores it. No local heavy ML models required.
 
 ### 4. Intelligence Layer (Groq)
-Managed by `app/ai.py`.
--   **Provider**: Groq.
--   **Model**: Integrated with models like `llama-3-70b-8192` or `gpt-oss-120b` for ultra-low latency inference.
--   **Tasks**:
-    -   **Structured Analysis**: Extracts strictly formatted JSON (Company Info, Sentiment, Contacts) from raw text.
-    -   **Chat**: Engages in natural language conversations grounded in the retrieved website context.
+The cognitive engine.
+-   **Speed**: Leveraging Groq's LPU (Language Processing Unit) hardware for near-instant token generation.
+-   **Models**: `llama-3-70b-8192` for high-fidelity reasoning and JSON extraction.
+-   **Constraint**: STRICT JSON mode enforcement to ensuring reliable, distinct structured data outputs.
 
-### 5. Orchestration (LangGraph & SQLite)
--   **LangGraph**: Manages the control flow of the chat agent. It represents the conversation as a graph of states (`StateGraph`).
--   **Persistence**: 
-    -   Uses `AsyncSqliteSaver` to store specific checkpoints of the conversation graph.
-    -   This allows the user to resume a conversation thread (`thread_id`) at any time, maintaining perfect memory of previous turns.
+### 5. Agent Orchestration (LangGraph)
+Manages the state and flow of conversations.
+-   **State Machine**: Defines the conversation as a graph of nodes (User asks -> Agent thinks -> Agent answers).
+-   **Checkpointer**: `AsyncSqliteSaver` persists the conversation state to a local SQLite file.
+-   **Memory**: Allows the agent to strictly "remember" previous turns in the `thread_id`, enabling multi-turn follow-up questions.
 
-## Data Flow Details
+---
 
-### Analysis Pipeline
-1.  **User** submits a URL.
-2.  **Scraper** fetches HTML, parses text, and traverses links.
-3.  **Vector Store Manager** chunks the text (1000 chars) and creates a designated Pinecone index.
-4.  **Pinecone** embeds and indexes the chunks.
-5.  **Groq** is prompted with the full homepage text to generate a high-level extracted summary (JSON).
-6.  **Results** are returned to the user.
+## 🔄 detailed Control Flow
 
-### Chat Pipeline (RAG)
-1.  **User** asks a question about a specific URL + `thread_id`.
-2.  **Vector Store** converts the question into a semantic query for that URL's specific Pinecone index.
-3.  **Context** is retrieved (top 5 relevant chunks).
-4.  **System Prompt** is constructed dynamically: *"You are an assistant. Answer ONLY using this context: [Context]..."*
-5.  **LangGraph** loads previous messages for this `thread_id` from separate **SQLite** storage.
-6.  **Groq** generates the answer.
-7.  **LangGraph** saves the new interaction to **SQLite**.
+### A. The Analysis Pipeline (`/analyze`)
+This pipeline converts a raw URL into structured business intelligence.
+1.  **Ingestion**: User submits `https://example.com`.
+2.  **BFS Crawl**: Scraper visits the homepage, finds links, and visits subpages (e.g., /pricing, /about).
+3.  **Indexing**:
+    -   Content is chunked into 1000-character segments.
+    -   `VectorStoreManager` creates a unique index name: `idx-example-a1b2`.
+    -   Chunks are upserted to Pinecone.
+4.  **Extraction**:
+    -   The aggregated text is sent to Groq with a specialized "Analyst" system prompt.
+    -   Groq extracts fields like `Industry`, `USP`, `Contact Info` into a JSON object.
+5.  **Response**: The JSON is validated against Pydantic models and returned to the client.
+
+### B. The Chat Pipeline (`/chat`)
+This pipeline enables "Chat with Website" functionality using RAG.
+1.  **Context Retrieval**:
+    -   User asks: *"What is their pricing per user?"*
+    -   System queries the *specific* Pinecone index for `example.com`.
+    -   Top 5 most relevant text chunks are retrieved.
+2.  **Prompt Assembly**:
+    -   System creates a strict prompt: *"Answer ONLY using these 5 chunks: [...]"*.
+3.  **Graph Execution**:
+    -   LangGraph retrieves the history for `thread_id`.
+    -   Current query + Context + History are sent to Groq.
+4.  **Generation**:
+    -   Groq generates a grounded response with citations.
+5.  **Persistence**:
+    -   The new Q&A pair is saved to SQLite for the next turn.
