@@ -15,3 +15,5 @@ langchain-core
 langgraph-checkpoint-sqlite
 aiosqlite
 gunicorn
+pinecone
+langchain-text-splitters

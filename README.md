@@ -1,83 +1,148 @@
 # Firmable AI Agent
 
-Firmable AI is a high-performance FastAPI application designed to extract, synthesize, and interpret business insights from website homepages. It leverages Google Gemini AI and advanced web scraping to provide structured information and conversational follow-ups.
+Firmable is a powerful Business Intelligence AI Agent designed to autonomously analyze websites, extract structured business insights, and facilitate context-aware conversations using advanced RAG (Retrieval-Augmented Generation) techniques.
 
-## 🚀 Features
-- **Semantic Extraction**: Automatically identifies Industry, Company Size, USP, Target Audience, and Overall Sentiment.
-- **Conversational AI**: A dedicated endpoint for asking follow-up questions with source citation.
-- **Asynchronous Scraping**: Efficiently fetches and cleans website data.
-- **Security**: Bearer token authentication for all API endpoints.
-- **Rate Limiting**: Built-in protection against abuse.
-- **Premium UI**: A sleek, modern dashboard for easy interaction.
+Built with a modern tech stack featuring **FastAPI**, **Groq**, **Pinecone Serverless Inference**, and **LangGraph**, Firmable offers a scalable and efficient solution for automated market research and competitive analysis.
 
-## 🛠️ Architecture
-```mermaid
-graph TD
-    User-->|REST API| FastAPI
-    FastAPI-->|Scraper| Website
-    FastAPI-->|AI Service| Gemini_LLM
-    Gemini_LLM-->|Process| FastAPI
-    FastAPI-->|Response| User
-```
+## 🚀 Key Features
 
-## 🧰 Tech Stack
-- **FastAPI**: Main framework for high-performance API development.
-- **Google Gemini (AI)**: Used for semantic extraction and conversational QA.
-- **HTTPX & BeautifulSoup**: Asynchronous web scraping and cleaning.
-- **Pydantic**: Robust data validation and serialization.
-- **SlowAPI**: Rate limiting for security.
-- **Vanilla CSS & JS**: Modern, responsive UI with glassmorphism.
+### 1. Autonomous Website Analysis
+-   **Deep Crawling**: Automatically traverses websites (BFS depth 3) to gather comprehensive content beyond just the homepage.
+-   **Structured Extraction**: Converts unstructured web content into strict JSON formats containing:
+    -   Company Industry & Size
+    -   Core Products & Unique Selling Propositions (USP)
+    -   Contact Information (Emails, Phones, Social Media)
+    -   Sentiment Analysis
 
-## ⚙️ Setup & Installation
+### 2. Dynamic RAG System
+-   **Per-URL Indexing**: Instantly creates a **dedicated, isolated Pinecone index** for every analyzed website.
+-   **Serverless Inference**: Utilizes Pinecone's `llama-text-embed-v2` model directly on the server side for efficient embedding generation.
+-   **Contextual Search**:Retrieves precise chunks of information to ground AI responses in factual website data.
 
-### 1. Prerequisites
-- Python 3.9+
-- A Google AI Studio API Key (for Gemini)
+### 3. Context-Aware Chat
+-   **LangGraph Orchestration**: Manages conversation state and history using persistent SQLite checkpoints.
+-   **Grounded Responses**: System prompts are dynamically injected with retrieved context to prevent hallucinations.
+-   **Source Attribution**: Chat responses cite specific source URLs from the analyzed content.
 
-### 2. Installation
-```powershell
-# Clone the repository (if applicable)
-# Navigate to project directory
-cd Firmable
+---
 
-# Install dependencies
-pip install -r requirements.txt
-```
+## 🛠 Tech Stack
 
-### 3. Environment Configuration
-Create a `.env` file in the root directory:
-```env
-SECRET_KEY=your_custom_secret_token
-GEMINI_API_KEY=your_gemini_api_key_from_google_studio
-```
+-   **Backend Framework**: FastAPI (Python)
+-   **LLM Provider**: Groq (Llama 3 / Mixtral via API)
+-   **Vector Database**: Pinecone (Serverless Inference)
+-   **Agent Orchestration**: LangGraph
+-   **Database**: SQLite (for chat session persistence)
+-   **Scraping**: BeautifulSoup4 + AsyncIO
 
-### 4. Running the Application
-```powershell
+---
+
+## 📋 Prerequisites
+
+Before running the application, ensure you have the following:
+
+1.  **Python 3.10+** installed.
+2.  **Groq API Key**: Get one from [Groq Cloud](https://console.groq.com/).
+3.  **Pinecone API Key**: Get one from [Pinecone Console](https://app.pinecone.io/). Ensure your project supports Serverless indexes.
+
+---
+
+## ⚙️ Installation & Setup
+
+1.  **Clone the Repository**
+    ```bash
+    git clone https://github.com/your-username/firmable-ai.git
+    cd firmable-ai
+    ```
+
+2.  **Create Virtual Environment**
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # On Windows: venv\Scripts\activate
+    ```
+
+3.  **Install Dependencies**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+4.  **Configure Environment Variables**
+    Create a `.env` file in the root directory:
+    ```env
+    # Core Security
+    SECRET_KEY=your_super_secret_key_here
+
+    # AI Providers
+    GROQ_API_KEY=gsk_...
+    PINECONE_API_KEY=pcsk_...
+
+    # Configuration
+    GROQ_MODEL=openai/gpt-oss-120b # or llama3-70b-8192
+    ```
+
+---
+
+## 🏃‍♂️ Usage
+
+### Start the Application
+Run the development server using Uvicorn:
+```bash
 uvicorn app.main:app --reload
 ```
-Open `http://localhost:8000` in your browser to access the UI.
+The server will start at `http://127.0.0.1:8000`.
 
-## 📡 API Usage Examples
+### API Endpoints
 
-### Endpoint 1: Analyze Website
-**POST** `/analyze`
+#### 1. Analyze a Website (`POST /analyze`)
+Triggers the scraping and deep analysis process.
+
+**Request:**
 ```json
 {
-    "url": "https://stripe.com",
-    "questions": ["What is their main payment product?"]
-}
-```
-**Auth**: `Authorization: Bearer your_custom_secret_token`
-
-### Endpoint 2: Chat
-**POST** `/chat`
-```json
-{
-    "url": "https://stripe.com",
-    "query": "How do they handle global payments?",
-    "conversation_history": []
+  "url": "https://example.com",
+  "questions": ["What is their pricing model?"]
 }
 ```
 
-## 📝 IDE
-Developed using VS Code / Cursor.
+**Response:**
+Returns structured JSON with company info, contact details, and specific answers to your questions.
+
+#### 2. Chat with Data (`POST /chat`)
+Engage in a multi-turn conversation about the analyzed specific website.
+
+**Request:**
+```json
+{
+  "url": "https://example.com",
+  "query": "Who are their main competitors?",
+  "thread_id": "session-123",
+  "conversation_history": []
+}
+```
+
+**Response:**
+Returns the agent's answer derived strictly from the website's content, along with source references.
+
+---
+
+## 📂 Project Structure
+
+```
+firmable/
+├── app/
+│   ├── ai.py             # LangGraph workflow & LLM logic
+│   ├── main.py           # FastAPI endpoints & entry point
+│   ├── models.py         # Pydantic data models
+│   ├── scraper.py        # Web scraping logic
+│   ├── vector_store.py   # Pinecone dynamic indexing manager
+│   ├── logging_config.py # Logger setup
+│   └── templates/        # HTML templates for UI
+├── tests/                # Unit & Integration tests
+├── .env                  # Environment secrets
+├── requirements.txt      # Python dependencies
+└── README.md             # Documentation
+```
+
+## 🛡 License
+
+This project is licensed under the MIT License.

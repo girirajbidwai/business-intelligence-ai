@@ -12,11 +12,10 @@ from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
 import logging
 
+from .logging_config import setup_logging
+
 # Configure Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -25,7 +24,7 @@ from .models import (
     ChatRequest, ChatResponse,
     CompanyInfo, ContactInfo, ExtractedAnswer
 )
-from .scraper import scrape_homepage
+from .scraper import scrape_website
 from .ai import AIService
 
 load_dotenv()
@@ -68,10 +67,13 @@ async def analyze_website(
     token: str = Depends(verify_token)
 ):
     try:
-        logger.info(f"Received analysis request for: {payload.url}")
-        # Re-initialize or check key if needed, or just let it fail and catch it
-        content = await scrape_homepage(str(payload.url))
-        analysis = await ai_service.analyze_content(content, payload.questions)
+        logger.info(f"Received deep analysis request for: {payload.url}")
+        # Scrape with BFS depth 3
+        website_data = await scrape_website(str(payload.url))
+        if not website_data:
+            raise ValueError("No content found on the website.")
+            
+        analysis = await ai_service.analyze_content(website_data, payload.questions)
         
         # Structure the response
         response = AnalysisResponse(
@@ -97,9 +99,10 @@ async def chat_with_website(
 ):
     try:
         logger.info(f"Chat request for: {payload.url} | Thread: {payload.thread_id}")
-        content = await scrape_homepage(str(payload.url))
+        
+        # The AI Service will handle RAG retrieval based on the URL namespace
         chat_result = await ai_service.chat_interaction(
-            content=content,
+            url=str(payload.url),
             query=payload.query,
             thread_id=payload.thread_id,
             history=payload.conversation_history
@@ -109,7 +112,7 @@ async def chat_with_website(
             url=payload.url,
             user_query=payload.query,
             agent_response=chat_result.get("agent_response", "I generated a response but failed to parse it."),
-            context_sources=chat_result.get("context_sources", ["Homepage content analysis"])
+            context_sources=chat_result.get("context_sources", ["Website RAG Index"])
         )
     except ValueError as ve:
         logger.error(f"Chat validation error: {str(ve)}")
